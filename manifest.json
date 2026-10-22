@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "AIhub Shop Desk — دفتر سفارش و سود",
+  "short_name": "Shop Desk",
+  "description": "دفتر سفارش و سود فروشگاه‌های اینستاگرامی و تلگرامی؛ آفلاین، فارسی و با تاریخ شمسی",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "app/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0e17",
+  "theme_color": "#0a0e17",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
