@@ -5,7 +5,7 @@
      cached page when offline or when the network is slow.
    - A new worker activates immediately but never reloads open pages and only deletes OUR OLD shell caches.
    All URLs are resolved against the worker's own scope, so it works under any sub-path (e.g. /my-repo/). */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const PREFIX = 'aihub-shop-desk-shell-';
 const CACHE = PREFIX + VERSION;
 const PAGES = ['', 'app/'];  /* landing page + app page */

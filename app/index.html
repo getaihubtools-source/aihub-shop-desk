@@ -219,6 +219,24 @@ body{background-color:var(--bg);background-image:var(--glow);background-repeat:n
 :root[data-theme=dark] .modal{border:1px solid var(--line);box-shadow:0 24px 70px rgba(0,0,0,.6)}
 :root[data-theme=dark] input,:root[data-theme=dark] select,:root[data-theme=dark] textarea{border-color:var(--line)}
 :root[data-theme=dark] ::selection{background:color-mix(in srgb,var(--pri) 35%,transparent)}
+/* ===== Home header + native dropdowns follow the app theme ===== */
+:root{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+option,optgroup{background:var(--field);color:var(--ink)}
+select.stsel option{background:var(--field);color:var(--ink);font-weight:600}
+@media print{:root,:root[data-theme=dark]{color-scheme:light}}
+.hhdr{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:calc(var(--r) + 4px);padding:20px 22px;margin-bottom:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--pri) 13%,var(--card)),var(--card) 65%);box-shadow:var(--shadow)}
+.hhdr::before{content:"";position:absolute;inset-block-start:-60px;inset-inline-end:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--pri) 22%,transparent),transparent 70%);pointer-events:none}
+.hhdr>*{position:relative}
+.hhdr.bad{border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
+.hh-main{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.hh-ey{font-size:.78rem;color:var(--muted);letter-spacing:.02em}
+.hh-name{font-size:1.6rem;font-weight:800;line-height:1.4;margin:2px 0}
+.hh-name a{font-size:.9rem;font-weight:600;color:var(--pri);cursor:pointer}
+.hh-date{color:var(--muted);font-size:.92rem;display:flex;align-items:center;gap:6px}.hh-date svg{width:16px;height:16px}
+.hh-bk{display:flex;flex-direction:column;align-items:center;gap:6px}
+.hh-last{font-size:.78rem;color:var(--muted)}.hh-last.bad{color:var(--danger);font-weight:700}
+.hh-alert{margin-top:14px;padding:10px 14px;border-radius:10px;background:color-mix(in srgb,var(--danger) 14%,var(--card));border:1px solid color-mix(in srgb,var(--danger) 50%,transparent);color:var(--danger);font-weight:600;font-size:.9rem}
+@media(max-width:640px){.hhdr{padding:16px}.hh-main{flex-direction:column;align-items:stretch}.hh-name{font-size:1.3rem}.hh-bk{align-items:stretch}.hh-bk .btn{justify-content:center}.hh-last{text-align:center}}
 /* hard-coded status colors are brightened in dark mode for contrast */
 :root[data-theme=dark] .chip,:root[data-theme=dark] select.stsel{color:color-mix(in srgb,var(--c) 42%,#fff)}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 40%,transparent);border-radius:8px;border:2px solid var(--bg)}
@@ -941,7 +959,7 @@ function render() {
       <nav class="nav">${nav(true)}</nav><div class="sp"></div>
       <button class="btn pri" data-a="new-order">${ic('plus')} سفارش جدید</button>
       <button class="btn" data-a="theme">${ic('moon')} حالت تیره/روشن</button></aside>
-    <main class="main"><div class="top"><div><h1>${titles[v]}</h1></div><div class="row hide-m" id="top-actions"></div></div><div id="view"></div></main>
+    <main class="main"><div class="top"${v === 'home' ? ' style="display:none"' : ''}><div><h1>${titles[v]}</h1></div><div class="row hide-m" id="top-actions"></div></div><div id="view"></div></main>
     <nav class="bnav">${nav()}</nav><button class="fab" data-a="new-order" aria-label="سفارش جدید">${ic('plus')}</button></div>`;
   ({ home: viewHome, orders: viewOrders, products: viewProducts, customers: viewCustomers, finance: viewFinance, settings: viewSettings, help: viewHelp })[v]();
   document.title = `${titles[v]} — AIhub Shop Desk`;
@@ -1090,13 +1108,35 @@ function viewFinReport(tab) {
 }
 
 /* ---------- Views ---------- */
+/* ---------- Home header: shop name, date, backup button + last-backup note + red reminder ---------- */
+const BACKUP_WARN_DAYS = 3;
+function homeHeader() {
+  const today = J.todayISO(), tj = J.toJ(today), d = new Date(today + 'T12:00:00');
+  const wd = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'][d.getDay()];
+  const mn = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'][tj.jm - 1];
+  const lb = S.settings.lastBackup ? new Date(S.settings.lastBackup) : null, ok = lb && !isNaN(lb);
+  const p2 = n => String(n).padStart(2, '0');
+  const lbISO = ok ? `${lb.getFullYear()}-${p2(lb.getMonth() + 1)}-${p2(lb.getDate())}` : '';
+  const days = ok ? Math.max(0, J.daysBetween(lbISO, today)) : null;
+  const hasData = !!(S.orders.length || S.products.length || S.customers.length);
+  const bad = hasData && (days === null || days >= BACKUP_WARN_DAYS);
+  const last = !ok ? 'هنوز پشتیبان نگرفته‌اید'
+    : days === 0 ? `آخرین پشتیبان: امروز، ساعت ${fa(p2(lb.getHours()) + ':' + p2(lb.getMinutes()))}`
+    : days === 1 ? `آخرین پشتیبان: دیروز، ساعت ${fa(p2(lb.getHours()) + ':' + p2(lb.getMinutes()))}`
+    : `آخرین پشتیبان: ${fa(days)} روز پیش (${J.fmt(lbISO)})`;
+  const name = S.settings.shopName ? esc(S.settings.shopName) : `فروشگاه من <a ${goAttr({ v: 'settings' })}>نام فروشگاه را بنویسید</a>`;
+  return `<section class="hhdr${bad ? ' bad' : ''}"><div class="hh-main">
+    <div><div class="hh-ey">دفتر سفارش و سود</div><h1 class="hh-name">${name}</h1><div class="hh-date">${ic('cal')}<span>${wd}، ${fa(tj.jd)} ${mn} ${fa(tj.jy)}</span></div></div>
+    <div class="hh-bk"><button class="btn pri" data-a="backup">تهیه پشتیبان</button><small class="hh-last${bad ? ' bad' : ''}">${last}</small></div></div>
+    ${bad ? `<div class="hh-alert" role="alert">⚠️ ${days === null ? 'هنوز از اطلاعات‌تان پشتیبان نگرفته‌اید.' : `${fa(days)} روز است پشتیبان نگرفته‌اید.`} داده‌ها فقط روی همین مرورگر ذخیره می‌شوند؛ همین حالا یک فایل پشتیبان بگیرید.</div>` : ''}</section>`;
+}
+
 function viewHome() {
   const today = J.todayISO(), tj = J.toJ(today), sumOf = Intel.sum, fm = Fin.month(tj.jy, tj.jm), rec = Fin.receivables();
   const todayO = Intel.between(today, today), w1 = Intel.between(J.addDays(today, -6), today), w0 = Intel.between(J.addDays(today, -13), J.addDays(today, -7)), mt = Intel.mtd();
   const win = Intel.window30(), pend = S.orders.filter(o => PENDING.includes(o.status));
   const act = S.products.filter(p => !p.archived), low = act.filter(p => Products.isLow(p) || Products.isOut(p));
   const days = S.settings.lastBackup ? J.daysBetween(S.settings.lastBackup.slice(0, 10), today) : null;
-  const needBackup = (S.orders.length || S.products.length) && (days === null || days >= 7);
   const empty = !S.orders.length && !S.products.length && !S.customers.length;
   const delta = (cur, prev, what) => { if (!(prev > 0)) return `<i>${cur > 0 ? what + ' فروشی نداشت' : '—'}</i>`; const p = Math.round((cur / prev - 1) * 100); return `<i class="${p >= 0 ? 'pos' : 'neg'}">${p >= 0 ? '▲ ' : '▼ '}${sfmt(p)}٪ نسبت به ${what}</i>`; };
   const rg = Rpt.resolve(UI.range), pv = Rpt.prev(rg), cs = Rpt.summary(rg.from, rg.to), ps = Rpt.summary(pv.from, pv.to), hasPrev = ps.orders > 0 || ps.expenses > 0, rOrders = Rpt.orders(rg.from, rg.to), ser = Rpt.series(rg.from, rg.to);
@@ -1108,7 +1148,7 @@ function viewHome() {
   const kp = (t, v, sub, cls) => `<div class="card kpi"><small>${t}</small><b class="${cls || ''}">${v}</b>${sub}</div>`;
   const alertsCard = `<div class="card" style="margin:14px 0"><h2>هشدارها ${al.length ? `<span class="chip" style="--c:#c0392b">${fa(al.length)} مورد</span>` : ''}</h2>${al.length ? al.map(a => `<div class="al" style="--c:${SEV[a.sev][1]}"><h4><span>${a.title} <span class="muted" style="font-weight:400">| ${fa(a.count)} مورد</span></span><span class="chip" style="--c:${SEV[a.sev][1]}">اهمیت: ${SEV[a.sev][0]}</span></h4><div class="act">پیشنهاد: ${a.action}</div>
       <ul class="list">${a.items.map(it => `<li><a ${it.go ? goAttr(it.go) : `data-a="${it.a}" data-id="${it.id}"`}>${esc(it.text)}</a></li>`).join('')}${a.more ? `<li><a ${goAttr(ALERT_GO[a.key])} class="muted">و ${fa(a.more)} مورد دیگر ‹</a></li>` : ''}</ul></div>`).join('') : '<p class="pos">هشدار فعالی وجود ندارد ✓</p>'}</div>`;
-  $('#view').innerHTML = (needBackup ? `<div class="warnbox"><span>⚠️ ${days === null ? 'هنوز از اطلاعات‌تان فایل پشتیبان نگرفته‌اید.' : `${fa(days)} روز است پشتیبان نگرفته‌اید.`} داده‌ها فقط روی همین مرورگر ذخیره می‌شوند.</span><button class="btn sm pri" data-a="backup">دانلود پشتیبان</button></div>` : '') +
+  $('#view').innerHTML = homeHeader() +
     (Store.volatile ? `<div class="warnbox"><span>⚠️ ${Store.blocked ? 'این برنامه در تب دیگری باز است و به‌روزرسانی داده‌ها متوقف شده؛ همه‌ی تب‌های قدیمی را ببندید و صفحه را دوباره باز کنید (اطلاعات شما پاک نشده است).' : 'ذخیره‌سازی مرورگر در دسترس نیست؛ داده‌ها با بستن صفحه پاک می‌شوند. حتماً پشتیبان بگیرید.'}</span></div>` : '') +
     trialBanner() +
     (empty ? startCard() + `<div class="card empty"><b>خوش آمدید 👋</b>برای شروع، اولین محصول و اولین سفارش را ثبت کنید، یا با داده‌ی نمونه محیط را امتحان کنید.<div class="row" style="justify-content:center;margin-top:14px"><button class="btn pri" data-a="new-product">${ic('plus')} محصول جدید</button><button class="btn" data-a="demo">بارگذاری داده نمونه</button></div></div>` : `
