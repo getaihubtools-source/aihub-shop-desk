@@ -234,9 +234,25 @@ select.stsel option{background:var(--field);color:var(--ink);font-weight:600}
 .hh-name a{font-size:.9rem;font-weight:600;color:var(--pri);cursor:pointer}
 .hh-date{color:var(--muted);font-size:.92rem;display:flex;align-items:center;gap:6px}.hh-date svg{width:16px;height:16px}
 .hh-bk{display:flex;flex-direction:column;align-items:center;gap:6px}
-.hh-last{font-size:.78rem;color:var(--muted)}.hh-last.bad{color:var(--danger);font-weight:700}
+.hh-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}.hh-last{font-size:.78rem;color:var(--muted)}.hh-last.bad{color:var(--danger);font-weight:700}
 .hh-alert{margin-top:14px;padding:10px 14px;border-radius:10px;background:color-mix(in srgb,var(--danger) 14%,var(--card));border:1px solid color-mix(in srgb,var(--danger) 50%,transparent);color:var(--danger);font-weight:600;font-size:.9rem}
-@media(max-width:640px){.hhdr{padding:16px}.hh-main{flex-direction:column;align-items:stretch}.hh-name{font-size:1.3rem}.hh-bk{align-items:stretch}.hh-bk .btn{justify-content:center}.hh-last{text-align:center}}
+@media(max-width:640px){.hhdr{padding:16px}.hh-main{flex-direction:column;align-items:stretch}.hh-name{font-size:1.3rem}.hh-bk{align-items:stretch}.hh-bk .btn{justify-content:center;flex:1}.hh-last{text-align:center}}
+/* ===== Themed dropdowns (replace the OS select / datalist pop-ups, which ignore the app theme on many phones) ===== */
+.dd-back{position:fixed;inset:0;z-index:300}
+.dd-back.combo{pointer-events:none}.dd-back.combo .dd{pointer-events:auto}
+.dd{position:fixed;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(15,30,60,.22);overflow-y:auto;padding:5px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;font-size:.92rem;line-height:1.6;direction:rtl}
+:root[data-theme=dark] .dd{background:linear-gradient(180deg,color-mix(in srgb,var(--card) 100%,#fff 4%),var(--card));box-shadow:0 18px 50px rgba(0,0,0,.65)}
+.dd-o{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer}
+.dd-o.on{background:var(--pri-soft);color:var(--pri);font-weight:700}.dd-o.on::after{content:"✓";font-weight:800}
+.dd-o.act,.dd-o:hover{background:color-mix(in srgb,var(--pri) 15%,transparent)}
+.dd-o.dis{opacity:.45;cursor:not-allowed}
+.dd-g{padding:8px 12px 2px;font-size:.75rem;color:var(--muted);font-weight:700}
+.dd-back.sheet{background:rgba(3,8,14,.55);display:flex;align-items:flex-end}
+.dd-back.sheet .dd{position:static;width:100%;max-height:62vh;border-radius:18px 18px 0 0;border-width:1px 0 0;padding:8px 8px calc(10px + env(safe-area-inset-bottom))}
+.dd-back.sheet .dd-o{padding:13px 14px;font-size:1rem}
+@media print{.dd-back{display:none!important}}
+/* printable sales report */
+@media print{.rp h1{font-size:17pt}.rp h2{font-size:12pt;margin:14px 0 4px;border-bottom:1px solid #000;padding-bottom:2px}.rp .rp-sub{font-size:10pt;margin:2px 0}.rp .rp-n{font-size:9pt;margin-top:6px}.rp td.n,.rp th.n{text-align:left}.rp tr{break-inside:avoid}.rp thead{display:table-header-group}}
 /* hard-coded status colors are brightened in dark mode for contrast */
 :root[data-theme=dark] .chip,:root[data-theme=dark] select.stsel{color:color-mix(in srgb,var(--c) 42%,#fff)}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 40%,transparent);border-radius:8px;border:2px solid var(--bg)}
@@ -356,9 +372,19 @@ const Store = {
         this.dbName = LICENSE_PUBKEY ? 'aihub-shop-desk-sale' : 'aihub-shop-desk'; /* sale build never shares data with the dev/test build */
         const r = indexedDB.open(this.dbName, 2);
         r.onupgradeneeded = () => { this.stores.forEach(s => { if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s, { keyPath: 'id' }); }); };
-        r.onsuccess = () => { r.result.onversionchange = () => r.result.close(); res(r.result); }; r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('blocked'));
+        r.onsuccess = () => { r.result.onversionchange = () => Store.stale(); res(r.result); }; r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('blocked'));
       });
-    } catch (e) { this.db = null; this.volatile = true; this.blocked = !!(e && e.message === 'blocked'); this.mem = {}; this.stores.forEach(s => this.mem[s] = new Map()); }
+    } catch (e) {
+      if (e && e.name === 'VersionError') throw e; /* stored data is newer than this build: never fall back to an empty in-memory session */
+      this.db = null; this.volatile = true; this.blocked = !!(e && e.message === 'blocked'); this.mem = {}; this.stores.forEach(s => this.mem[s] = new Map());
+    }
+  },
+  closed: false,
+  /* another tab/an update upgraded the database: this connection is closed by the browser's rules, so say so and reload instead of failing every write silently */
+  stale() {
+    try { this.db && this.db.close(); } catch (e) { /* ignore */ }
+    this.closed = true; try { toast('نسخه‌ی جدید برنامه باز شد؛ صفحه دوباره بارگذاری می‌شود…', true); } catch (e) { /* ignore */ }
+    setTimeout(() => { if (!document.querySelector('#modal-root > *')) location.reload(); else { try { toast('این پنجره را ببندید و برنامه را دوباره باز کنید', true); } catch (e) { /* ignore */ } } }, 1500);
   },
   persisted: null,
   /* ask the browser not to evict our data under storage pressure (best effort; result shown in Settings) */
@@ -367,6 +393,7 @@ const Store = {
   },
   _tx(store, mode, fn) {
     return new Promise((res, rej) => {
+      if (this.closed) return rej(new Error('اتصال به اطلاعات بسته شده است؛ برنامه را دوباره باز کنید'));
       const t = this.db.transaction(store, mode); let out;
       const r = fn(t.objectStore(store)); if (r) r.onsuccess = () => { out = r.result; };
       t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
@@ -380,7 +407,17 @@ const Store = {
     return this._tx(s, 'readwrite', st => { arr.forEach(o => st.put(o)); });
   },
   del(s, id) { return this.db ? this._tx(s, 'readwrite', st => { st.delete(id); }) : (this.mem[s].delete(id), Promise.resolve()); },
-  clear(s) { return this.db ? this._tx(s, 'readwrite', st => { st.clear(); }) : (this.mem[s].clear(), Promise.resolve()); }
+  clear(s) { return this.db ? this._tx(s, 'readwrite', st => { st.clear(); }) : (this.mem[s].clear(), Promise.resolve()); },
+  /* replace the WHOLE database content in ONE transaction: either everything is swapped or (on any error, quota, crash) nothing changes */
+  replaceAll(data) {
+    if (!this.db) { this.stores.forEach(s => { this.mem[s].clear(); (data[s] || []).forEach(o => this.mem[s].set(o.id, structuredClone(o))); }); return Promise.resolve(); }
+    return new Promise((res, rej) => {
+      if (this.closed) return rej(new Error('اتصال به اطلاعات بسته شده است؛ برنامه را دوباره باز کنید'));
+      let t; try { t = this.db.transaction(this.stores, 'readwrite'); this.stores.forEach(s => { const st = t.objectStore(s); st.clear(); (data[s] || []).forEach(o => st.put(o)); }); }
+      catch (e) { try { t && t.abort(); } catch (x) { /* already finished */ } return rej(e); }
+      t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  }
 };
 
 /* ---------- Domain constants ---------- */
@@ -675,8 +712,9 @@ const Rpt = {
 };
 
 /* ---------- Backup / Restore / Demo ---------- */
+const DATA_SCHEMA = 2; /* bump when the stored record shapes change; a backup with a higher number is refused */
 const Data = {
-  snapshot() { return { app: 'aihub-shop-desk', schema: 2, exportedAt: new Date().toISOString(), customers: S.customers, products: S.products, orders: S.orders, payments: S.payments, expenses: S.expenses, settings: S.settings }; },
+  snapshot() { return { app: 'aihub-shop-desk', schema: DATA_SCHEMA, exportedAt: new Date().toISOString(), customers: S.customers, products: S.products, orders: S.orders, payments: S.payments, expenses: S.expenses, settings: S.settings }; },
   /* Strict structural validation + safe defaults, run BEFORE anything is written to the DB */
   validate(obj) {
     const bad = m => fail('پشتیبان معتبر نیست: ' + m), isO = x => x && typeof x === 'object' && !Array.isArray(x);
@@ -717,18 +755,16 @@ const Data = {
   restore(obj) { return Sync.exclusive(() => Data._restore(obj)); },
   async _restore(obj) {
     if (!obj || obj.app !== 'aihub-shop-desk' || !Array.isArray(obj.customers) || !Array.isArray(obj.products) || !Array.isArray(obj.orders)) fail('این فایل، پشتیبان معتبر Shop Desk نیست');
+    if (Number.isInteger(obj.schema) && obj.schema > DATA_SCHEMA) fail('این پشتیبان با نسخه‌ی جدیدتری از برنامه ساخته شده است؛ ابتدا برنامه را به‌روزرسانی کنید');
     const { pays, exps } = Data.validate(obj);
     const trialDoc = (await Store.getAll('meta')).find(m => m.id === 'trial'), keep = await Safety.take('بازیابی از فایل'), lic = (obj.settings && obj.settings.license) || S.settings.license, lock = S.settings.lock || (obj.settings && obj.settings.lock);
-    for (const s of Store.stores) await Store.clear(s);
-    await Store.bulkPut('customers', obj.customers); await Store.bulkPut('products', obj.products); await Store.bulkPut('orders', obj.orders);
-    await Store.bulkPut('payments', pays); await Store.bulkPut('expenses', exps);
     const set = Object.assign({ id: 'settings' }, obj.settings || {}, { id: 'settings' }); if (lic) set.license = lic; if (lock) set.lock = lock;
-    await Store.put('meta', set); if (keep) await Store.put('meta', keep); if (trialDoc) await Store.put('meta', trialDoc);
+    await Store.replaceAll({ customers: obj.customers, products: obj.products, orders: obj.orders, payments: pays, expenses: exps, meta: [set, keep, trialDoc].filter(Boolean) });
     await loadAll(); await License.check(); UI.safety = keep; Sync.notify();
   },
   async wipe(skipSafety) {
     const keep = skipSafety ? await Safety.get() : await Safety.take('حذف کامل'), { license, lock } = S.settings, trialDoc = (await Store.getAll('meta')).find(m => m.id === 'trial');
-    for (const s of Store.stores) await Store.clear(s); if (keep) await Store.put('meta', keep); if (trialDoc) await Store.put('meta', trialDoc); UI.safety = keep;
+    await Store.replaceAll({ meta: [keep, trialDoc].filter(Boolean) }); UI.safety = keep;
     S.customers = []; S.products = []; S.orders = []; S.payments = []; S.expenses = []; S.settings = { id: 'settings', shopName: '', lastBackup: null, orderNo: 1000 }; if (license) S.settings.license = license; if (lock) S.settings.lock = lock; await saveSettings();
   },
   demo(n) { return Sync.exclusive(async () => { Sync.skip = true; License.bypass = true; try { await loadAll(); await Safety.take('بارگذاری داده نمونه'); await Data._demo(n); } finally { License.bypass = false; Sync.skip = false; Sync.notify(); } }); },
@@ -882,6 +918,23 @@ function openModal(html, wide) {
   w.addEventListener('mousedown', e => { if (e.target === w) closeModal(w); });
   $('#modal-root').appendChild(w); return w;
 }
+/* Android Back / browser Back closes the top dialog instead of leaving the app: every open dialog owns one history entry (all entries share the same URL) */
+const ModalNav = (() => {
+  let pushed = 0, ignore = 0, skip = 0, count = 0;
+  const root = () => document.getElementById('modal-root');
+  const sync = () => {
+    const n = root().children.length;
+    if (n > count) { for (let i = count; i < n; i++) { try { history.pushState({ sdm: 1 }, ''); pushed++; } catch (e) { /* ignore */ } } }
+    else if (n < count) { for (let i = n; i < count; i++) { if (skip > 0) { skip--; continue; } if (pushed > 0) { pushed--; ignore++; try { history.back(); } catch (e) { ignore--; } } } }
+    count = n;
+  };
+  new MutationObserver(sync).observe(root(), { childList: true });
+  window.addEventListener('popstate', () => {
+    if (ignore > 0) { ignore--; return; }
+    if (pushed > 0) { pushed--; if (root().lastElementChild) { skip++; closeModal(); } }
+  });
+  return { sync };
+})();
 function closeModal(w) { const el = w || $('#modal-root').lastElementChild; if (el) { el.dispatchEvent(new Event('mclose')); el.remove(); } }
 function confirmBox(msg, okLabel = 'تأیید', danger = false) {
   return new Promise(res => {
@@ -1127,7 +1180,7 @@ function homeHeader() {
   const name = S.settings.shopName ? esc(S.settings.shopName) : `فروشگاه من <a ${goAttr({ v: 'settings' })}>نام فروشگاه را بنویسید</a>`;
   return `<section class="hhdr${bad ? ' bad' : ''}"><div class="hh-main">
     <div><div class="hh-ey">دفتر سفارش و سود</div><h1 class="hh-name">${name}</h1><div class="hh-date">${ic('cal')}<span>${wd}، ${fa(tj.jd)} ${mn} ${fa(tj.jy)}</span></div></div>
-    <div class="hh-bk"><button class="btn pri" data-a="backup">تهیه پشتیبان</button><small class="hh-last${bad ? ' bad' : ''}">${last}</small></div></div>
+    <div class="hh-bk"><div class="hh-btns"><button class="btn pri" data-a="backup">تهیه پشتیبان</button><button class="btn" data-a="ai-export">${ic('print')} گزارش و خروجی</button></div><small class="hh-last${bad ? ' bad' : ''}">${last}</small></div></div>
     ${bad ? `<div class="hh-alert" role="alert">⚠️ ${days === null ? 'هنوز از اطلاعات‌تان پشتیبان نگرفته‌اید.' : `${fa(days)} روز است پشتیبان نگرفته‌اید.`} داده‌ها فقط روی همین مرورگر ذخیره می‌شوند؛ همین حالا یک فایل پشتیبان بگیرید.</div>` : ''}</section>`;
 }
 
@@ -1404,7 +1457,7 @@ function orderForm(order) {
   const w = openModal(`<div class="mh"><h3>${o ? 'ویرایش سفارش #' + fa(o.no) : 'ثبت سفارش جدید'}</h3><button class="ibtn" data-a="close">${ic('x')}</button></div>
    <div class="mb">
     <div class="fg"><label class="f">مشتری * <span class="muted">(نام یا شماره را بنویسید؛ اگر قبلاً ثبت شده باشد پیشنهاد می‌شود)</span></label>
-      <input id="o-cust" list="cust-list" autocomplete="off" value="${esc(cust ? custLabel(cust) : '')}" placeholder="نام مشتری…"><datalist id="cust-list">${S.customers.map(c => `<option value="${esc(custLabel(c))}">`).join('')}</datalist>
+      <input id="o-cust" data-dl="cust-list" autocomplete="off" value="${esc(cust ? custLabel(cust) : '')}" placeholder="نام مشتری…"><datalist id="cust-list">${S.customers.map(c => `<option value="${esc(custLabel(c))}">`).join('')}</datalist>
       <div id="newcust" class="two" style="margin-top:8px;display:none"><input id="o-cphone" inputmode="tel" placeholder="شماره تماس مشتری جدید"><input id="o-cig" dir="ltr" placeholder="آیدی اینستاگرام (اختیاری)"></div></div>
     <label class="f">کالاها</label><div id="items">${itemRows()}</div><button class="btn sm" type="button" data-a="of-add">${ic('plus')} افزودن کالا</button>
     <div class="two" style="margin-top:14px"><div class="fg"><label class="f">تخفیف (تومان)</label><input class="money" id="o-disc" inputmode="numeric" value="${o && o.discount ? fmt(o.discount) : ''}"></div><div class="fg"><label class="f">هزینه ارسال (تومان)</label><input class="money" id="o-ship" inputmode="numeric" value="${o && o.shipping ? fmt(o.shipping) : ''}"></div></div>
@@ -1572,6 +1625,75 @@ function tplCard() {
 }
 
 /* ---------- Print: invoice & shipping label ---------- */
+/* ---------- Themed dropdowns: custom pop-up list for every <select> and the customer autocomplete ---------- */
+const Dd = (() => {
+  let st = null, tp = null, picking = false;
+  const mob = () => matchMedia('(max-width:640px)').matches;
+  function close() { if (!st) return; const o = st; st = null; o.back.remove(); if (o.mode === 'select') { try { o.el.focus({ preventScroll: true }); } catch (e) { } } }
+  function paint() { st.box.querySelectorAll('.dd-o').forEach(n => n.classList.toggle('act', +n.dataset.i === st.active)); const a = st.box.querySelector('.dd-o.act'); if (a) a.scrollIntoView({ block: 'nearest' }); }
+  function show(el, mode, items, active) {
+    close();
+    const sheet = mode === 'select' && mob(), back = document.createElement('div'), box = document.createElement('div');
+    back.className = 'dd-back' + (sheet ? ' sheet' : '') + (mode === 'combo' ? ' combo' : ''); box.className = 'dd'; box.setAttribute('role', 'listbox');
+    box.innerHTML = items.map((it, i) => it.group ? `<div class="dd-g">${esc(it.label)}</div>` : `<div class="dd-o${it.sel ? ' on' : ''}${it.dis ? ' dis' : ''}" role="option" aria-selected="${!!it.sel}" data-i="${i}">${esc(it.label)}</div>`).join('');
+    back.appendChild(box); document.body.appendChild(back);
+    st = { el, mode, items, active, box, back };
+    if (!sheet) {
+      const r = el.getBoundingClientRect(), vw = innerWidth, vh = innerHeight, below = vh - r.bottom - 10, above = r.top - 10;
+      box.style.minWidth = Math.min(r.width, vw - 16) + 'px'; box.style.maxWidth = Math.min(vw - 16, 440) + 'px'; box.style.visibility = 'hidden';
+      const down = below >= Math.min(box.scrollHeight + 12, 220) || below >= above;
+      box.style.maxHeight = Math.max(120, Math.min(320, down ? below : above)) + 'px';
+      const bw = box.offsetWidth, bh = box.offsetHeight;
+      box.style.left = Math.min(Math.max(8, r.right - bw), vw - bw - 8) + 'px'; box.style.top = (down ? r.bottom + 4 : Math.max(8, r.top - 4 - bh)) + 'px'; box.style.visibility = '';
+    }
+    box.addEventListener('mousedown', e => e.preventDefault());
+    box.addEventListener('click', e => { const n = e.target.closest('.dd-o'); if (n) pick(+n.dataset.i); });
+    back.addEventListener('click', e => { if (e.target === back) close(); });
+    if (active >= 0) paint();
+  }
+  function pick(i) {
+    const o = st, it = o && o.items[i]; if (!it || it.group || it.dis) return; close();
+    if (o.mode === 'select') { if (o.el.selectedIndex === it.idx) return; o.el.selectedIndex = it.idx; }
+    else { if (o.el.value === it.label) return; o.el.value = it.label; }
+    picking = true; try { o.el.dispatchEvent(new Event('input', { bubbles: true })); o.el.dispatchEvent(new Event('change', { bubbles: true })); } finally { picking = false; }
+  }
+  function openSelect(sel) {
+    const items = []; [...sel.children].forEach(ch => {
+      if (ch.tagName === 'OPTGROUP') { items.push({ group: true, label: ch.label }); [...ch.children].forEach(o => items.push({ label: o.textContent, dis: o.disabled || ch.disabled, idx: o.index, sel: o.selected })); }
+      else if (ch.tagName === 'OPTION') items.push({ label: ch.textContent, dis: ch.disabled, idx: ch.index, sel: ch.selected });
+    });
+    show(sel, 'select', items, items.findIndex(x => x.sel));
+  }
+  function openCombo(inp) {
+    const dl = document.getElementById(inp.dataset.dl); if (!dl) return;
+    const q = inp.value.trim().toLowerCase(), all = [...dl.options].map(o => o.value), hit = all.filter(v => !q || v.toLowerCase().includes(q)).slice(0, 40);
+    if (!hit.length || (hit.length === 1 && hit[0] === inp.value)) return close();
+    show(inp, 'combo', hit.map(v => ({ label: v, sel: v === inp.value })), -1);
+  }
+  const usable = s => s && s.tagName === 'SELECT' && !s.multiple && !s.disabled;
+  document.addEventListener('mousedown', e => { const s = e.target.closest && e.target.closest('select'); if (!usable(s) || e.button) return; e.preventDefault(); s.focus({ preventScroll: true }); openSelect(s); }, true);
+  document.addEventListener('touchstart', e => { const s = e.target.closest && e.target.closest('select'); const t = e.touches[0]; tp = usable(s) && e.touches.length === 1 ? { s, x: t.clientX, y: t.clientY, m: false } : null; }, { capture: true, passive: true });
+  document.addEventListener('touchmove', e => { if (tp) { const t = e.touches[0]; if (Math.abs(t.clientX - tp.x) > 10 || Math.abs(t.clientY - tp.y) > 10) tp.m = true; } }, { capture: true, passive: true });
+  document.addEventListener('touchend', e => { const o = tp; tp = null; if (o && !o.m && e.cancelable && usable(o.s)) { e.preventDefault(); openSelect(o.s); } }, { capture: true, passive: false });
+  document.addEventListener('click', e => { const i = e.target.closest && e.target.closest('input[data-dl]'); if (i && !st) openCombo(i); }, true);
+  document.addEventListener('input', e => { const i = e.target; if (!picking && i.matches && i.matches('input[data-dl]')) openCombo(i); }, true);
+  document.addEventListener('focusout', e => { if (st && st.mode === 'combo' && e.target === st.el) close(); }, true);
+  document.addEventListener('keydown', e => {
+    const k = e.key;
+    if (!st) { const t = e.target; if (usable(t) && ['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(k)) { e.preventDefault(); openSelect(t); } else if (k === 'ArrowDown' && t.matches && t.matches('input[data-dl]')) { e.preventDefault(); openCombo(t); } return; }
+    if (k === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    else if (k === 'ArrowDown' || k === 'ArrowUp') {
+      e.preventDefault(); const d = k === 'ArrowDown' ? 1 : -1, n = st.items.length; let i = st.active;
+      for (let c = 0; c < n; c++) { i = (i + d + n) % n; if (!st.items[i].group && !st.items[i].dis) break; } st.active = i; paint();
+    }
+    else if (k === 'Enter' || (k === ' ' && st.mode === 'select')) { if (st.active >= 0) { e.preventDefault(); e.stopImmediatePropagation(); pick(st.active); } else if (st.mode === 'combo') close(); }
+    else if (k === 'Tab') close();
+  }, true);
+  addEventListener('resize', () => close()); addEventListener('scroll', e => { if (st && !(e.target instanceof Node && st.box.contains(e.target))) close(); }, true);
+  new MutationObserver(() => { if (st && !st.el.isConnected) close(); }).observe(document.body, { childList: true, subtree: true });
+  return { close };
+})();
+
 const Print = {
   open(html, page, margin) {
     let st = $('#print-page'); if (!st) { st = document.createElement('style'); st.id = 'print-page'; document.head.appendChild(st); }
@@ -1601,6 +1723,24 @@ const Print = {
       ${o.trackingCode ? `<div class="lbl-ft"><span>رهگیری: ${esc(fa(o.trackingCode))}</span></div>` : ''}
       ${due > 0 ? `<div class="lbl-cod">مبلغ قابل دریافت: ${money(due)}</div>` : '<div class="lbl-paid">پرداخت‌شده ✓</div>'}</div>`;
   },
+  reportHtml(R) {
+    const d = Report.data(R.from, R.to), sh = Print.shop(), rec = Fin.receivables(), all = R.from === '0000-01-01', today = J.todayISO();
+    const list = d.os.slice().sort((a, b) => a.date.localeCompare(b.date) || a.no - b.no), CAP = 150;
+    const tb = (head, rows) => `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(x => `<td>${x}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    const kv = [['تعداد سفارش (بدون لغو و مرجوع)', fa(d.orders)], ['سفارش لغو یا مرجوع‌شده', fa(d.closed)], ['فروش', money(d.revenue)], ['بهای کالای فروخته‌شده', money(d.cogs)], ['سود ناخالص', money(d.gross)], ['هزینه‌ها', money(d.expenses)], ['سود خالص', money(d.net) + ' | حاشیه ' + sfmt(Math.round(d.margin)) + '٪'], ['میانگین ارزش سفارش', money(d.avg)], ['جمع تخفیف‌ها', money(d.discount)]];
+    const nm = id => { const c = Customers.get(id); return esc(c ? c.name : '—'); };
+    return `<div class="inv rp"><div class="inv-h"><div><h1>${esc(sh.name)}</h1><div class="rp-sub">گزارش فروش و سود</div><div class="rp-sub">بازه: ${all ? 'همه‌ی زمان‌ها' : esc(R.label) + ' (' + J.fmt(R.from) + ' تا ' + J.fmt(R.to) + ')'}</div></div><div class="inv-m"><div>تاریخ تهیه: ${J.fmtLong(today)}</div></div></div>
+      <h2>خلاصه</h2>${tb(['شرح', 'مقدار'], kv)}
+      ${d.bySource.length ? '<h2>فروش به تفکیک منبع</h2>' + tb(['منبع', 'سفارش', 'فروش (تومان)'], d.bySource.map(x => [esc(SOURCES[x.key] || x.key), fa(x.orders), fmt(x.revenue)])) : ''}
+      ${d.products.length ? '<h2>پرفروش‌ترین محصولات</h2>' + tb(['محصول', 'تعداد', 'فروش (تومان)', 'سود ناخالص (تومان)'], d.products.map(x => [esc(x.name), fa(x.qty), fmt(x.revenue), x.profit == null ? '—' : sfmt(x.profit)])) : ''}
+      <h2>هزینه‌ها</h2>${tb(['دسته', 'مبلغ (تومان)'], [...Object.entries(EXP_CATS).map(([k, t]) => [t, fmt(d.byCat[k] || 0)]), ['<b>جمع</b>', '<b>' + fmt(d.expenses) + '</b>']])}
+      ${d.top.length ? '<h2>مشتریان برتر</h2>' + tb(['مشتری', 'خرید (تومان)'], d.top.map(t => [nm(t.id), fmt(t.v)])) + `<p class="rp-n">مشتری فعال در بازه: ${fa(d.customers)} | مشتری تکراری: ${fa(d.repeat)}</p>` : ''}
+      ${list.length ? '<h2>فهرست سفارش‌ها</h2>' + tb(['شماره', 'تاریخ', 'مشتری', 'وضعیت', 'مبلغ (تومان)', 'مانده (تومان)'], list.slice(0, CAP).map(o => [fa(o.no), J.fmt(o.date), nm(o.customerId), esc(ST[o.status].label), fmt(o.total), fmt(Math.max(0, o.total - Payments.paid(o.id)))])) + (list.length > CAP ? `<p class="rp-n">فقط ${fa(CAP)} سفارش اول نمایش داده شد؛ فهرست کامل را با «CSV سفارش‌ها» بگیرید.</p>` : '') : ''}
+      <p class="rp-n">مطالبات جاری (مستقل از بازه): ${fa(rec.list.length)} سفارش، جمع ${money(rec.total)}</p>
+      <p class="rp-n">سود محصولاتی که «قیمت خرید» ندارند با «—» نشان داده می‌شود و بهای آن‌ها در سود ناخالص صفر حساب شده است.</p>
+      <div class="inv-f">AIhub Shop Desk${License.mode() === 'trial' ? ' | نسخه آزمایشی' : ''}</div></div>`;
+  },
+  report(range) { const R = Report.ranges()[range] || Report.ranges().month, d = Report.data(R.from, R.to); if (!d.os.length && !d.ex.length) return toast('در این بازه سفارش یا هزینه‌ای ثبت نشده است', true); Print.open(Print.reportHtml(R), 'A4', '12mm'); },
   invoice(o) { if (o) Print.open(Print.invoiceHtml(o), 'A5', '10mm'); },
   labels(list) { list = list.filter(Boolean); if (!list.length) return toast('سفارشی برای چاپ نیست', true); Print.open(list.map(Print.labelHtml).join(''), '100mm 150mm', '3mm'); }
 };
@@ -1668,12 +1808,12 @@ const AIX = { range: 'month', anon: true, task: 'analyze' };
 function aiRefresh() { $('#ai-text').value = Report.build(AIX); }
 function aiModal() {
   const R = Report.ranges();
-  openModal(`<div class="mh"><h3>خروجی برای هوش مصنوعی و اکسل</h3><button class="ibtn" data-a="close">${ic('x')}</button></div><div class="mb">
+  openModal(`<div class="mh"><h3>گزارش و خروجی</h3><button class="ibtn" data-a="close">${ic('x')}</button></div><div class="mb">
    <div class="grid g2" style="margin-bottom:10px"><div class="fg"><label class="f">بازه</label><select data-chg="ai-opt" data-k="range">${Object.entries(R).map(([k, r]) => `<option value="${k}" ${AIX.range === k ? 'selected' : ''}>${r.label}</option>`).join('')}</select></div>
      <div class="fg"><label class="f">درخواست از هوش مصنوعی</label><select data-chg="ai-opt" data-k="task">${Object.entries(Report.TASKS).map(([k, t]) => `<option value="${k}" ${AIX.task === k ? 'selected' : ''}>${t[0]}</option>`).join('')}</select></div></div>
    <label class="swrow" style="border:0;padding:0 0 10px"><input type="checkbox" data-chg="ai-opt" data-k="anon" ${AIX.anon ? 'checked' : ''}><span><b>ناشناس‌سازی</b> <small class="muted">(نام مشتری‌ها و نام فروشگاه حذف می‌شود؛ شماره تلفن و آدرس در هیچ حالتی در خروجی نیست)</small></span></label>
    <textarea id="ai-text" rows="14" readonly style="font-size:.82rem;line-height:1.7"></textarea>
-   <div class="row" style="margin-top:10px;gap:8px"><button class="btn pri" data-a="ai-copy">${ic('copy')} کپی متن</button><button class="btn" data-a="ai-txt">${ic('download')} فایل متنی</button><button class="btn" data-a="ai-csv-orders">${ic('download')} CSV سفارش‌ها</button><button class="btn" data-a="ai-csv-exp">${ic('download')} CSV هزینه‌ها</button></div>
+   <div class="row" style="margin-top:10px;gap:8px"><button class="btn pri" data-a="print-report">${ic('print')} گزارش چاپی / PDF</button><button class="btn" data-a="ai-copy">${ic('copy')} کپی متن</button><button class="btn" data-a="ai-txt">${ic('download')} فایل متنی</button><button class="btn" data-a="ai-csv-orders">${ic('download')} CSV سفارش‌ها</button><button class="btn" data-a="ai-csv-exp">${ic('download')} CSV هزینه‌ها</button></div>
    <p class="muted" style="font-size:.78rem;margin-top:10px">متن را در ChatGPT یا Claude یا Gemini Paste کنید. قبل از ارسال، پیش‌نمایش بالا را بخوانید؛ آنچه اینجا می‌بینید دقیقاً همان چیزی است که ارسال می‌شود. فایل CSV در اکسل با فارسی درست باز می‌شود.</p></div><div class="mf"><button class="btn" data-a="close">بستن</button></div>`, true);
   aiRefresh();
 }
@@ -1760,8 +1900,8 @@ const Lock = {
 setInterval(() => Lock.tick(), 5000);
 
 /* ---------- Light license: ECDSA-signed string, verified offline; trial = limited real orders (never limits data access/export) ---------- */
-const LICENSE_PUBKEY = "{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"Z1h4bXXQFoyes14VbtZwWjxWYEqd2UTtaO40jL8-Irk\",\"y\":\"QF5uZVrptPDephAC8bEKJtXH0OWcXb8dtYieWBtJB-U\"}";
-const TRIAL_ORDERS = 20;
+const LICENSE_PUBKEY = "{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"9dJWk4IKsH3-6hJPMzJqU5-t3B4OnHJhwiuMHOnpygE\",\"y\":\"SXxc5td1HR-ciuHUcncjpOtUZOVAseFcBjk2T2oCrxs\"}";
+const TRIAL_ORDERS = 10;
 const LIMIT_MSG = `نسخه‌ی آزمایشی تا ${fa(TRIAL_ORDERS)} سفارش واقعی را ثبت می‌کند. برای ادامه، مجوز را فعال کنید. اطلاعات، پشتیبان‌گیری و خروجی‌ها همیشه در دسترس شما می‌مانند.`;
 const License = {
   /* a malformed key or one that contains private (“d”) material is never trusted: the build then simply stays in trial mode */
@@ -1877,7 +2017,7 @@ const HELP = [
   ['اطلاعات من کجا ذخیره می‌شود؟', 'فقط روی همین مرورگر و همین دستگاه. اگر اطلاعات مرورگر (Cookies/Site data) پاک شود، یا مرورگر را عوض کنید، یا در حالت ناشناس (Private) کار کنید، اطلاعات از دست می‌رود. پس پشتیبان بگیرید و فایل را جایی امن (مثلاً Saved Messages تلگرام) نگه دارید.'],
   ['پشتیبان‌گیری و بازیابی', 'تنظیمات ← «دانلود پشتیبان». برای فایلی که از طریق پیام‌رسان می‌فرستید «پشتیبان رمزدار» را بزنید؛ بدون رمز، باز نمی‌شود و رمز قابل بازیابی نیست. برای انتقال به گوشی یا کامپیوتر دیگر: پشتیبان بگیرید، آن‌جا برنامه را باز کنید و «بازیابی از فایل» را بزنید. قبل از هر بازیابی، حذف یا داده‌ی نمونه، یک «نسخه‌ی ایمنی» از اطلاعات فعلی ذخیره می‌شود تا اگر اشتباه کردید برگردید.'],
   ['قفل برنامه', 'با رمز می‌توانید ورود به برنامه را قفل کنید و بعد از چند دقیقه بی‌کاری خودکار قفل شود. <b>این قفل جلوی دیدن اتفاقی دیگران را می‌گیرد، ولی رمزنگاری دیتابیس نیست</b> (کسی که به مرورگر شما دسترسی فنی داشته باشد می‌تواند از آن رد شود). کد بازیابی را هنگام تنظیم رمز یادداشت کنید؛ بدون رمز و کد بازیابی فقط فایل پشتیبان می‌ماند.'],
-  ['نسخه‌ی آزمایشی و مجوز', 'نسخه‌ی آزمایشی تا ۲۰ سفارش واقعی ثبت می‌کند (داده‌ی نمونه حساب نمی‌شود) و روی فاکتور عبارت «نسخه آزمایشی» می‌آید. با کد مجوز، محدودیت برداشته می‌شود. در هر حالت، دیدن اطلاعات و پشتیبان‌گیری و خروجی همیشه آزاد است. کد مجوز را از @aihub_tools بگیرید؛ فعال‌سازی آفلاین است و مجوز به نام خریدار صادر می‌شود. برای صدور، «کد این دستگاه» را (در تنظیمات ← مجوز) برای فروشنده بفرستید؛ کد فقط روی همان دستگاه کار می‌کند و هر خریدار تا ۳ دستگاه می‌تواند داشته باشد. اگر اطلاعات مرورگر پاک شود، کد دستگاه عوض می‌شود و باید دوباره کد بگیرید.'],
+  ['نسخه‌ی آزمایشی و مجوز', 'نسخه‌ی آزمایشی تا ۱۰ سفارش واقعی ثبت می‌کند (داده‌ی نمونه حساب نمی‌شود) و روی فاکتور عبارت «نسخه آزمایشی» می‌آید. با کد مجوز، محدودیت برداشته می‌شود. در هر حالت، دیدن اطلاعات و پشتیبان‌گیری و خروجی همیشه آزاد است. کد مجوز را از @aihub_tools بگیرید؛ فعال‌سازی آفلاین است و مجوز به نام خریدار صادر می‌شود. برای صدور، «کد این دستگاه» را (در تنظیمات ← مجوز) برای فروشنده بفرستید؛ کد فقط روی همان دستگاه کار می‌کند و هر خریدار تا ۳ دستگاه می‌تواند داشته باشد. اگر اطلاعات مرورگر پاک شود، کد دستگاه عوض می‌شود و باید دوباره کد بگیرید.'],
   ['خروجی برای هوش مصنوعی', 'تنظیمات یا صفحه‌ی مالی ← «خروجی AI / CSV». متن گزارش را در ChatGPT یا Claude Paste کنید. «ناشناس‌سازی» نام مشتری‌ها و فروشگاه را برمی‌دارد؛ شماره تلفن و آدرس هرگز در خروجی نیست.'],
   ['مشکل دارم', 'ابتدا صفحه را یک بار تازه کنید و مطمئن شوید برنامه فقط در یک تب باز است. اگر مشکل ماند، یک پشتیبان بگیرید و برای پشتیبانی در کانال @aihub_tools پیام بدهید.']
 ];
@@ -1945,7 +2085,7 @@ const ACT = {
   'msg-order': el => { const o = Orders.get(el.dataset.id); closeModal(); msgModal(o); }, 'msg-customer': el => { const c = Customers.get(el.dataset.id); closeModal(); msgModal(null, c); }, 'msg-send': el => Msg.send(el.dataset.ch),
   'print-invoice': el => Print.invoice(Orders.get(el.dataset.id)), 'print-label': el => Print.labels([Orders.get(el.dataset.id)]), 'print-labels': () => Print.labels(S.orders.filter(o => o.status === 'paid' || o.status === 'ready').sort((a, b) => a.no - b.no)),
   'tpl-reset': async el => { const t = Object.assign({}, S.settings.templates); delete t[el.dataset.id]; S.settings.templates = t; await saveSettings(); toast('قالب به پیش‌فرض برگشت'); refresh(); },
-  'ai-export': () => aiModal(), 'ai-copy': async () => { toast(await copyText($('#ai-text').value) ? 'کپی شد' : 'کپی انجام نشد؛ متن را دستی انتخاب کنید', false); },
+  'ai-export': () => aiModal(), 'print-report': () => Print.report(AIX.range), 'ai-copy': async () => { toast(await copyText($('#ai-text').value) ? 'کپی شد' : 'کپی انجام نشد؛ متن را دستی انتخاب کنید', false); },
   'ai-txt': () => downloadFile(`shopdesk-report-${J.todayISO()}.txt`, 'text/plain', $('#ai-text').value), 'ai-csv-orders': () => downloadFile(`shopdesk-orders-${J.todayISO()}.csv`, 'text/csv', Report.ordersCsv(AIX.range, AIX.anon)), 'ai-csv-exp': () => downloadFile(`shopdesk-expenses-${J.todayISO()}.csv`, 'text/csv', Report.expensesCsv(AIX.range)), close: () => closeModal(), theme: () => { toggleTheme(); }, 'new-order': () => License.canAdd() ? orderForm(null) : licenseModal(LIMIT_MSG), 'new-product': () => productForm(null), 'new-customer': () => customerForm(null),
   'edit-order': el => { closeModal(); orderForm(Orders.get(el.dataset.id)); }, 'view-order': el => { if ($('#modal-root').children.length) closeModal(); orderView(el.dataset.id); },
   'del-order': async el => { const o = Orders.get(el.dataset.id); if (await confirmBox(`سفارش #${fa(o.no)} حذف شود؟${Orders.consumes(o.status) ? ' موجودی کالاها به انبار برمی‌گردد.' : ''}${Payments.paid(o.id) !== 0 ? ' پرداخت‌های ثبت‌شده‌ی آن هم حذف می‌شود.' : ''}`, 'حذف', true)) { await run(() => Orders.remove(o.id), 'سفارش حذف شد'); refresh(); } },
@@ -2000,19 +2140,26 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('focusout', e => { const t = e.target; if (t.classList && t.classList.contains('money')) { const v = nd(t.value).trim(); if (v !== '') t.value = fmt(num(v)); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-window.addEventListener('hashchange', () => { const v = location.hash.replace('#/', ''); if (Lock.unlocked && NAV.some(n => n[0] === v)) { UI.view = v; render(); window.scrollTo(0, 0); } });
+window.addEventListener('hashchange', () => { const v = location.hash.replace('#/', '') || 'home'; /* empty hash = the first history entry = home (so Back from a view lands on home instead of leaving a stale screen) */ if (Lock.unlocked && NAV.some(n => n[0] === v)) { UI.view = v; render(); window.scrollTo(0, 0); } });
 
 /* ---------- Boot ---------- */
+function bootFail(e) {
+  const newer = e && e.name === 'VersionError', m = newer ? 'اطلاعات ذخیره‌شده با نسخه‌ی جدیدتری از برنامه ساخته شده است. برنامه را با اینترنت باز کنید تا به‌روز شود.' : 'باز کردن اطلاعات ذخیره‌شده ممکن نشد. برنامه چیزی را پاک نکرده است؛ یک بار برنامه را ببندید و دوباره باز کنید.';
+  $('#app').innerHTML = `<div class="card" style="max-width:420px;margin:12vh auto 0;text-align:center"><h2 style="margin-bottom:10px">مشکل در راه‌اندازی</h2><p class="muted" style="margin-bottom:14px">${m}</p><button class="btn pri" id="boot-retry">تلاش دوباره</button><p class="muted" dir="ltr" style="font-size:.75rem;margin-top:12px">${esc(String((e && (e.name || e.message)) || e).slice(0, 100))}</p></div>`;
+  $('#boot-retry').onclick = () => location.reload();
+}
 (async function boot() {
-  applyTheme(); await Store.init(); await loadAll(); Sync.init(); await Store.keep();
-  const v = location.hash.replace('#/', ''); if (NAV.some(n => n[0] === v)) UI.view = v;
-  /* last-resort safety net: an unexpected error is never silent (a write may not have been saved) */
+  /* last-resort safety net: an unexpected error is never silent (a write may not have been saved); registered FIRST so start-up errors are covered too */
   let lastErr = 0; const oops = e => { const m = String((e && (e.reason && e.reason.message || e.message)) || ''), q = /Quota/i.test(String(e && (e.reason && e.reason.name || e.error && e.error.name) || m)); if (/ResizeObserver/.test(m) || Date.now() - lastErr < 5000) return; lastErr = Date.now(); try { toast(q ? 'فضای ذخیره‌سازی مرورگر پر است؛ همین حالا پشتیبان بگیرید و فضا آزاد کنید' : 'خطای غیرمنتظره رخ داد؛ اگر تغییری ذخیره نشد دوباره امتحان کنید و صفحه را تازه کنید', true); } catch (_) {} };
   window.addEventListener('unhandledrejection', oops); window.addEventListener('error', oops);
-  await License.check(); UI.safety = await Safety.get();
-  if (Lock.on()) { Lock.unlocked = false; Lock.screen(); } else render();
+  try {
+    applyTheme(); await Store.init(); await loadAll(); Sync.init(); await Store.keep();
+    const v = location.hash.replace('#/', ''); if (NAV.some(n => n[0] === v)) UI.view = v;
+    await License.check(); UI.safety = await Safety.get();
+    if (Lock.on()) { Lock.unlocked = false; Lock.screen(); } else render();
+  } catch (e) { bootFail(e); return; }
   if (!LICENSE_PUBKEY) { /* debug/test hooks exist ONLY in the unlicensed dev build; the keygen's SALE build has a public key, so they are absent */
-  window.__SD = { S, Store, Products, Customers, Orders, Payments, Expenses, Fin, Data, Intel, ALERTS, Msg, Print, Report, TPL, AIX, intlPhone, Lock, License, CR, Safety, HELP, startSteps, J, UI, render, fa, fmt, sfmt };
+  window.__SD = { S, Store, Products, Customers, Orders, Payments, Expenses, Fin, Data, Intel, ALERTS, Msg, Print, Report, TPL, AIX, intlPhone, Lock, License, CR, Safety, HELP, startSteps, J, UI, render, fa, fmt, sfmt, ModalNav };
     window.__ready = true; }
 })();
 })();
