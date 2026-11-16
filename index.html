@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="app-build" content="20261114.2c0f20">
 <meta name="apple-mobile-web-app-title" content="Shop Desk">
 <meta property="og:title" content="AIhub Shop Desk — دفتر سفارش و سود">
 <meta property="og:description" content="بدانید هر ماه واقعاً چقدر سود کرده‌اید. آفلاین، فارسی، بدون ثبت‌نام.">
@@ -2391,6 +2392,114 @@ dialog::backdrop{background:var(--overlay)}
 })(window, document);
 
 </script>
+<script data-root="./" data-mode="landing">
+/* ===== SDUpdate — update client (registration, detection, notice, safe apply) ===== */
+(function () {
+  'use strict';
+  var script = document.currentScript, ROOT = (script && script.getAttribute('data-root')) || './', MODE = (script && script.getAttribute('data-mode')) || 'app';
+  var meta = document.querySelector('meta[name="app-build"]'), RUN = (meta && meta.getAttribute('content')) || 'dev';
+  var CHECK_EVERY = 15 * 60 * 1000, IDLE_APPLY_MS = 60 * 1000;
+  var reg = null, available = false, newBuild = null, applying = false, hiddenAt = 0, bar = null, listeners = [], bc = null;
+  var ss = { get: function (k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set: function (k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* ignore */ } } };
+  var supported = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol);
+
+  function url(p) { return new URL(p, new URL(ROOT, location.href)).href; }
+  function say(m, err) { try { if (window.AIhub && AIhub.toast) AIhub.toast(m, err ? { kind: 'error', duration: 4200 } : { duration: 2600 }); } catch (e) { /* ignore */ } }
+  function modalOpen() { return !!document.querySelector('#modal-root > *'); }
+  function typing() { var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
+  function notify() { for (var i = 0; i < listeners.length; i++) { try { listeners[i](api.state()); } catch (e) { /* ignore */ } } }
+
+  /* ---- reload with a loop guard: at most one automatic reload per 20 s ---- */
+  function safeReload() {
+    var last = +(ss.get('sd_reload_at') || 0);
+    if (Date.now() - last < 20000) { applying = false; return; }
+    ss.set('sd_reload_at', String(Date.now())); location.reload();
+  }
+  function apply() {
+    if (!supported) { safeReload(); return; }
+    applying = true;
+    if (reg && reg.waiting) { try { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) { safeReload(); } setTimeout(function () { if (applying) safeReload(); }, 4000); }
+    else safeReload();
+  }
+
+  /* ---- the notice (app only; the landing page just applies the update, it has no user data) ---- */
+  function showBar() {
+    if (bar || MODE !== 'app') return;
+    bar = document.createElement('div'); bar.className = 'update-bar'; bar.setAttribute('role', 'status'); bar.setAttribute('aria-live', 'polite');
+    bar.innerHTML = '<span class="update-bar__text">نسخه‌ی جدید برنامه آماده است. اطلاعات شما حفظ می‌شود.</span><button type="button" class="btn btn--sm btn--accent" data-upd="now">بروزرسانی</button><button type="button" class="btn btn--sm btn--ghost" data-upd="later">بعداً</button>';
+    bar.addEventListener('click', function (e) { var b = e.target.closest && e.target.closest('[data-upd]'); if (!b) return; if (b.getAttribute('data-upd') === 'now') apply(); else hideBar(); });
+    document.body.appendChild(bar);
+  }
+  function hideBar() { if (bar && bar.parentNode) bar.parentNode.removeChild(bar); bar = null; }
+
+  function markAvailable(build, fromPeer) {
+    if (build && build === RUN) return;
+    newBuild = build || newBuild; if (available) return; available = true;
+    if (!fromPeer && bc) { try { bc.postMessage({ type: 'available', build: newBuild }); } catch (e) { /* ignore */ } }
+    if (MODE === 'landing') { apply(); return; }
+    showBar(); notify();
+  }
+
+  /* ---- detection: (1) waiting worker  (2) worker says the page changed  (3) version.json differs from the running build ---- */
+  /* a waiting worker whose build equals the build this page is already running (page came fresh from the network) needs no notice:
+     activate it silently, without reloading */
+  function onWaiting() {
+    if (!(reg && reg.waiting && navigator.serviceWorker.controller)) return;
+    checkVersion().then(function (b) {
+      if (b && b === RUN) { try { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) { /* ignore */ } } else markAvailable(b);
+    });
+  }
+  function watch(r) {
+    reg = r; onWaiting();
+    r.addEventListener('updatefound', function () {
+      var w = r.installing; if (!w) return;
+      w.addEventListener('statechange', function () { if (w.state === 'installed') onWaiting(); });
+    });
+  }
+  function checkVersion() {
+    if (!supported || RUN === 'dev') return Promise.resolve(null);
+    return fetch(url('version.json') + '?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (j && j.build && j.build !== RUN) markAvailable(j.build); return j && j.build ? j.build : null;
+    }).catch(function () { return null; });
+  }
+  function check(manual) {
+    if (!supported) { if (manual) say('بروزرسانی فقط روی نسخه‌ی نصب‌شده/آنلاین کار می‌کند', true); return Promise.resolve(api.state()); }
+    if (manual && navigator.onLine === false) { say('برای بررسی نسخه‌ی جدید اینترنت لازم است', true); return Promise.resolve(api.state()); }
+    var p1 = reg ? reg.update().catch(function () { /* offline etc. */ }) : Promise.resolve();
+    return Promise.all([p1, checkVersion()]).then(function () {
+      /* a just-installed worker needs a tick to reach 'installed' */
+      return new Promise(function (res) { setTimeout(res, 1200); });
+    }).then(function () { if (manual) { if (available) say('نسخه‌ی جدید آماده است'); else say('شما از آخرین نسخه استفاده می‌کنید'); } return api.state(); });
+  }
+
+  /* ---- auto-apply on the next foreground, only when it can't hurt: app was in the background >60 s, no dialog, no typing ---- */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    if (hiddenAt && available && MODE === 'app' && Date.now() - hiddenAt > IDLE_APPLY_MS && !modalOpen() && !typing()) { apply(); return; }
+    hiddenAt = 0; check(false);
+  });
+  window.addEventListener('online', function () { check(false); });
+  setInterval(function () { if (document.visibilityState === 'visible') check(false); }, CHECK_EVERY);
+
+  var api = window.SDUpdate = {
+    run: RUN, check: check, apply: apply, supported: supported,
+    state: function () { return { run: RUN, available: available, build: newBuild }; },
+    onchange: function (fn) { listeners.push(fn); }
+  };
+
+  if (!supported) return;
+  try { bc = new BroadcastChannel('sd-update'); bc.onmessage = function (e) { if (e.data && e.data.type === 'available') markAvailable(e.data.build, true); }; } catch (e) { bc = null; }
+  navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'UPDATE_READY') { markAvailable(null); } });
+  /* controllerchange: first install (no previous controller) is ignored; otherwise reload exactly once into the new version */
+  var hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', function () { if (!hadController) { hadController = true; return; } if (applying) safeReload(); });
+  window.addEventListener('load', function () {
+    try {
+      navigator.serviceWorker.register(url('service-worker.js'), { scope: url('./'), updateViaCache: 'none' }).then(function (r) { watch(r); setTimeout(function () { check(false); }, 2500); }).catch(function () { /* unsupported / blocked */ });
+    } catch (e) { /* ignore */ }
+  });
+})();
+</script>
 <script>
 (function () {
   'use strict';
@@ -2402,10 +2511,6 @@ dialog::backdrop{background:var(--overlay)}
   try { var oldT = ls.get('sd_theme'); if ((oldT === 'dark' || oldT === 'light') && !localStorage.getItem('aihub-theme')) AIhub.theme.set(oldT); } catch (e) {}
   $('#theme').addEventListener('click', function () { AIhub.theme.toggle(); });
 
-  /* service worker (http/https only) */
-  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    window.addEventListener('load', function () { try { navigator.serviceWorker.register('service-worker.js', { scope: './', updateViaCache: 'none' }).catch(function () {}); } catch (e) {} });
-  }
 
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
   var isIOS = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);

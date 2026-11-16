@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="app-build" content="20261114.2c0f20">
 <meta name="apple-mobile-web-app-title" content="Shop Desk">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>AIhub Shop Desk — دفتر سفارش و سود فروشگاه آنلاین</title>
@@ -1215,6 +1216,11 @@ a[role=button]:hover{color:var(--primary-ink)}
 @media print{:root,:root[data-theme=dark]{color-scheme:light}}
 @media print{.dd-back{display:none!important}}
 @media print{.rp h1{font-size:17pt}.rp h2{font-size:12pt;margin:14px 0 4px;border-bottom:1px solid #000;padding-bottom:2px}.rp .rp-sub{font-size:10pt;margin:2px 0}.rp .rp-n{font-size:9pt;margin-top:6px}.rp td.n,.rp th.n{text-align:left}.rp tr{break-inside:avoid}.rp thead{display:table-header-group}}
+
+/* ---- update notice ---- */
+.update-bar{position:fixed;inset-inline:var(--sp-3);inset-block-end:calc(var(--bottomnav-h) + var(--sp-3) + env(safe-area-inset-bottom,0px));z-index:var(--z-appbar);display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);padding:var(--sp-3) var(--sp-4);background:var(--surface);color:var(--text);border:1px solid var(--primary);border-radius:var(--r-lg);box-shadow:var(--shadow-3);max-inline-size:560px;margin-inline:auto}
+.update-bar__text{flex:1 1 220px;font-size:var(--fs-sm);font-weight:var(--fw-semibold)}
+@media (min-width:1024px){.update-bar{inset-inline:auto;inset-inline-start:var(--sp-5);inset-block-end:var(--sp-5)}}
 </style>
 </head>
 <body class="has-bottomnav">
@@ -1267,9 +1273,113 @@ a[role=button]:hover{color:var(--primary-ink)}
 </svg>
 
 <div id="app"><div class="boot" role="status" aria-busy="true" aria-label="در حال بارگذاری"><div class="skeleton boot__bar"></div><div class="skeleton boot__card"></div><div class="skeleton boot__card"></div></div></div><div id="modal-root"></div>
-<script>
-/* PWA: register the service worker only on http(s) (never on file://). Relative path => works under any sub-path such as GitHub Pages /repo/ */
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) window.addEventListener('load', function () { try { navigator.serviceWorker.register('../service-worker.js', { scope: '../', updateViaCache: 'none' }).catch(function () {}); } catch (e) {} });
+<script data-root="../" data-mode="app">
+/* ===== SDUpdate — update client (registration, detection, notice, safe apply) ===== */
+(function () {
+  'use strict';
+  var script = document.currentScript, ROOT = (script && script.getAttribute('data-root')) || './', MODE = (script && script.getAttribute('data-mode')) || 'app';
+  var meta = document.querySelector('meta[name="app-build"]'), RUN = (meta && meta.getAttribute('content')) || 'dev';
+  var CHECK_EVERY = 15 * 60 * 1000, IDLE_APPLY_MS = 60 * 1000;
+  var reg = null, available = false, newBuild = null, applying = false, hiddenAt = 0, bar = null, listeners = [], bc = null;
+  var ss = { get: function (k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set: function (k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* ignore */ } } };
+  var supported = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol);
+
+  function url(p) { return new URL(p, new URL(ROOT, location.href)).href; }
+  function say(m, err) { try { if (window.AIhub && AIhub.toast) AIhub.toast(m, err ? { kind: 'error', duration: 4200 } : { duration: 2600 }); } catch (e) { /* ignore */ } }
+  function modalOpen() { return !!document.querySelector('#modal-root > *'); }
+  function typing() { var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
+  function notify() { for (var i = 0; i < listeners.length; i++) { try { listeners[i](api.state()); } catch (e) { /* ignore */ } } }
+
+  /* ---- reload with a loop guard: at most one automatic reload per 20 s ---- */
+  function safeReload() {
+    var last = +(ss.get('sd_reload_at') || 0);
+    if (Date.now() - last < 20000) { applying = false; return; }
+    ss.set('sd_reload_at', String(Date.now())); location.reload();
+  }
+  function apply() {
+    if (!supported) { safeReload(); return; }
+    applying = true;
+    if (reg && reg.waiting) { try { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) { safeReload(); } setTimeout(function () { if (applying) safeReload(); }, 4000); }
+    else safeReload();
+  }
+
+  /* ---- the notice (app only; the landing page just applies the update, it has no user data) ---- */
+  function showBar() {
+    if (bar || MODE !== 'app') return;
+    bar = document.createElement('div'); bar.className = 'update-bar'; bar.setAttribute('role', 'status'); bar.setAttribute('aria-live', 'polite');
+    bar.innerHTML = '<span class="update-bar__text">نسخه‌ی جدید برنامه آماده است. اطلاعات شما حفظ می‌شود.</span><button type="button" class="btn btn--sm btn--accent" data-upd="now">بروزرسانی</button><button type="button" class="btn btn--sm btn--ghost" data-upd="later">بعداً</button>';
+    bar.addEventListener('click', function (e) { var b = e.target.closest && e.target.closest('[data-upd]'); if (!b) return; if (b.getAttribute('data-upd') === 'now') apply(); else hideBar(); });
+    document.body.appendChild(bar);
+  }
+  function hideBar() { if (bar && bar.parentNode) bar.parentNode.removeChild(bar); bar = null; }
+
+  function markAvailable(build, fromPeer) {
+    if (build && build === RUN) return;
+    newBuild = build || newBuild; if (available) return; available = true;
+    if (!fromPeer && bc) { try { bc.postMessage({ type: 'available', build: newBuild }); } catch (e) { /* ignore */ } }
+    if (MODE === 'landing') { apply(); return; }
+    showBar(); notify();
+  }
+
+  /* ---- detection: (1) waiting worker  (2) worker says the page changed  (3) version.json differs from the running build ---- */
+  /* a waiting worker whose build equals the build this page is already running (page came fresh from the network) needs no notice:
+     activate it silently, without reloading */
+  function onWaiting() {
+    if (!(reg && reg.waiting && navigator.serviceWorker.controller)) return;
+    checkVersion().then(function (b) {
+      if (b && b === RUN) { try { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) { /* ignore */ } } else markAvailable(b);
+    });
+  }
+  function watch(r) {
+    reg = r; onWaiting();
+    r.addEventListener('updatefound', function () {
+      var w = r.installing; if (!w) return;
+      w.addEventListener('statechange', function () { if (w.state === 'installed') onWaiting(); });
+    });
+  }
+  function checkVersion() {
+    if (!supported || RUN === 'dev') return Promise.resolve(null);
+    return fetch(url('version.json') + '?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (j && j.build && j.build !== RUN) markAvailable(j.build); return j && j.build ? j.build : null;
+    }).catch(function () { return null; });
+  }
+  function check(manual) {
+    if (!supported) { if (manual) say('بروزرسانی فقط روی نسخه‌ی نصب‌شده/آنلاین کار می‌کند', true); return Promise.resolve(api.state()); }
+    if (manual && navigator.onLine === false) { say('برای بررسی نسخه‌ی جدید اینترنت لازم است', true); return Promise.resolve(api.state()); }
+    var p1 = reg ? reg.update().catch(function () { /* offline etc. */ }) : Promise.resolve();
+    return Promise.all([p1, checkVersion()]).then(function () {
+      /* a just-installed worker needs a tick to reach 'installed' */
+      return new Promise(function (res) { setTimeout(res, 1200); });
+    }).then(function () { if (manual) { if (available) say('نسخه‌ی جدید آماده است'); else say('شما از آخرین نسخه استفاده می‌کنید'); } return api.state(); });
+  }
+
+  /* ---- auto-apply on the next foreground, only when it can't hurt: app was in the background >60 s, no dialog, no typing ---- */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    if (hiddenAt && available && MODE === 'app' && Date.now() - hiddenAt > IDLE_APPLY_MS && !modalOpen() && !typing()) { apply(); return; }
+    hiddenAt = 0; check(false);
+  });
+  window.addEventListener('online', function () { check(false); });
+  setInterval(function () { if (document.visibilityState === 'visible') check(false); }, CHECK_EVERY);
+
+  var api = window.SDUpdate = {
+    run: RUN, check: check, apply: apply, supported: supported,
+    state: function () { return { run: RUN, available: available, build: newBuild }; },
+    onchange: function (fn) { listeners.push(fn); }
+  };
+
+  if (!supported) return;
+  try { bc = new BroadcastChannel('sd-update'); bc.onmessage = function (e) { if (e.data && e.data.type === 'available') markAvailable(e.data.build, true); }; } catch (e) { bc = null; }
+  navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'UPDATE_READY') { markAvailable(null); } });
+  /* controllerchange: first install (no previous controller) is ignored; otherwise reload exactly once into the new version */
+  var hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', function () { if (!hadController) { hadController = true; return; } if (applying) safeReload(); });
+  window.addEventListener('load', function () {
+    try {
+      navigator.serviceWorker.register(url('service-worker.js'), { scope: url('./'), updateViaCache: 'none' }).then(function (r) { watch(r); setTimeout(function () { check(false); }, 2500); }).catch(function () { /* unsupported / blocked */ });
+    } catch (e) { /* ignore */ }
+  });
+})();
 </script>
 <script>
 /* ===== aihub-core.js ===== */
@@ -2404,10 +2514,10 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) window.
 /* ---------- Utils ---------- */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const FAD = '۰۱۲۳۴۵۶۷۸۹';
 const fa = s => String(s).replace(/\d/g, d => FAD[d]);
-const nd = s => String(s ?? '').replace(/[۰-۹]/g, d => FAD.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+const nd = s => String(s == null ? '' : s).replace(/[۰-۹]/g, d => FAD.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
 const nz = s => nd(s).replace(/ي/g, 'ی').replace(/ك/g, 'ک').toLowerCase();
 const num = v => { const n = parseFloat(nd(v).replace(/[٬,،\s]/g, '').replace('٫', '.')); return isFinite(n) ? n : 0; };
 const fmt = n => fa(Math.round(n).toLocaleString('en-US').replace(/,/g, '٬'));
@@ -3493,7 +3603,7 @@ function productForm(p) {
   p = p || { variants: [{ id: '', label: '', stock: 0 }], lowAt: 3 }; const vrow = v => `<div class="vrow" data-v="${esc(v.id || '')}"><input class="input" data-f="label" placeholder="تنوع (مثلاً قرمز / M) — خالی = بدون تنوع" value="${esc(v.label)}"><input class="input" data-f="stock" inputmode="numeric" placeholder="موجودی" value="${fa(v.stock)}"><button class="btn btn--ghost btn--icon is-danger" type="button" data-a="pv-del" aria-label="حذف تنوع">${ic('x')}</button></div>`;
   const w = openModal(`<div class="sheet__head"><h3>${p.id ? 'ویرایش محصول' : 'محصول جدید'}</h3><button class="btn btn--ghost btn--icon" data-a="close" aria-label="بستن">${ic('x')}</button></div>
    <div class="sheet__body"><div class="two"><div class="field"><label class="field__label">نام محصول *</label><input class="input" id="p-name" value="${esc(p.name || '')}"></div><div class="field"><label class="field__label">دسته‌بندی</label><input class="input" id="p-cat" value="${esc(p.category || '')}" placeholder="پوشاک، اکسسوری…"></div></div>
-   <div class="three" style="margin-bottom:12px"><div><label class="field__label">قیمت خرید (تومان)</label><input class="input money" id="p-buy" inputmode="numeric" value="${p.buyPrice ? fmt(p.buyPrice) : ''}"></div><div><label class="field__label">قیمت فروش (تومان) *</label><input class="input money" id="p-sell" inputmode="numeric" value="${p.sellPrice ? fmt(p.sellPrice) : ''}"></div><div><label class="field__label">هشدار کم‌موجودی</label><input class="input" id="p-low" inputmode="numeric" value="${fa(p.lowAt ?? 3)}"></div></div>
+   <div class="three" style="margin-bottom:12px"><div><label class="field__label">قیمت خرید (تومان)</label><input class="input money" id="p-buy" inputmode="numeric" value="${p.buyPrice ? fmt(p.buyPrice) : ''}"></div><div><label class="field__label">قیمت فروش (تومان) *</label><input class="input money" id="p-sell" inputmode="numeric" value="${p.sellPrice ? fmt(p.sellPrice) : ''}"></div><div><label class="field__label">هشدار کم‌موجودی</label><input class="input" id="p-low" inputmode="numeric" value="${fa((p.lowAt == null ? 3 : p.lowAt))}"></div></div>
    <label class="field__label">تنوع‌ها و موجودی</label><div id="pv-list">${p.variants.map(vrow).join('')}</div><button class="btn btn--sm" type="button" id="pv-add">${ic('plus')} افزودن تنوع</button></div>
    <div class="sheet__foot"><button class="btn" data-a="close">انصراف</button><button class="btn btn--primary" id="p-save">ذخیره</button></div>`);
   $('#pv-add', w).onclick = () => { $('#pv-list', w).insertAdjacentHTML('beforeend', vrow({ id: '', label: '', stock: 0 })); };
@@ -3691,6 +3801,7 @@ function aboutCard() {
    <p>AIhub Shop Desk دفتر سفارش و سود فروشگاه‌های اینستاگرامی و پیام‌رسانی است: ثبت سفارش و پرداخت، مدیریت مشتری و موجودی، گزارش سود و زیان و پیام آماده برای مشتری. برنامه آفلاین روی دستگاه خودتان کار می‌کند و اطلاعات فروشگاه شما به هیچ سروری فرستاده نمی‌شود. ساخته‌شده برای فروشنده‌های ایرانی توسط AIHUB.</p>
    <p style="margin-bottom:4px"><b>ارتباط با ما</b> | پشتیبانی، پیشنهاد و آموزش‌ها با آیدی <b dir="ltr">@aihub_tools</b> در هر سه پلتفرم:</p>
    <div class="links">${L.map(([n, u]) => `<a class="btn" href="${u}" target="_blank" rel="noopener noreferrer">${n}</a>`).join('')}</div>
+   <p class="muted" style="margin-block:var(--sp-3)">نسخه‌ی برنامه: <b dir="ltr">${esc((window.SDUpdate && SDUpdate.run) || 'dev')}</b> <button type="button" class="btn btn--sm" data-a="check-update">بررسی بروزرسانی</button></p>
    <p class="rights">© ${fa(J.toJ(J.todayISO()).jy)} AIHUB | تمامی حقوق این برنامه محفوظ است. کپی، فروش مجدد و بازتوزیع برنامه بدون اجازه‌ی کتبی ممنوع است.</p></div>`;
 }
 function tplCard() {
@@ -4160,7 +4271,7 @@ const ACT = {
   'print-invoice': el => Print.invoice(Orders.get(el.dataset.id)), 'print-label': el => Print.labels([Orders.get(el.dataset.id)]), 'print-labels': () => Print.labels(S.orders.filter(o => o.status === 'paid' || o.status === 'ready').sort((a, b) => a.no - b.no)),
   'tpl-reset': async el => { const t = Object.assign({}, S.settings.templates); delete t[el.dataset.id]; S.settings.templates = t; await saveSettings(); toast('قالب به پیش‌فرض برگشت'); refresh(); },
   'ai-export': () => aiModal(), 'print-report': () => Print.report(AIX.range), 'ai-copy': async () => { toast(await copyText($('#ai-text').value) ? 'کپی شد' : 'کپی انجام نشد؛ متن را دستی انتخاب کنید', false); },
-  'ai-txt': () => downloadFile(`shopdesk-report-${J.todayISO()}.txt`, 'text/plain', $('#ai-text').value), 'ai-csv-orders': () => downloadFile(`shopdesk-orders-${J.todayISO()}.csv`, 'text/csv', Report.ordersCsv(AIX.range, AIX.anon)), 'ai-csv-exp': () => downloadFile(`shopdesk-expenses-${J.todayISO()}.csv`, 'text/csv', Report.expensesCsv(AIX.range)), close: () => closeModal(), theme: () => { toggleTheme(); render(); }, 'theme-set': el => { AIhub.theme.set(el.dataset.t); render(); }, 'new-order': () => License.canAdd() ? orderForm(null) : licenseModal(LIMIT_MSG), 'new-product': () => productForm(null), 'new-customer': () => customerForm(null),
+  'ai-txt': () => downloadFile(`shopdesk-report-${J.todayISO()}.txt`, 'text/plain', $('#ai-text').value), 'ai-csv-orders': () => downloadFile(`shopdesk-orders-${J.todayISO()}.csv`, 'text/csv', Report.ordersCsv(AIX.range, AIX.anon)), 'ai-csv-exp': () => downloadFile(`shopdesk-expenses-${J.todayISO()}.csv`, 'text/csv', Report.expensesCsv(AIX.range)), 'check-update': () => { if (window.SDUpdate) SDUpdate.check(true); }, close: () => closeModal(), theme: () => { toggleTheme(); render(); }, 'theme-set': el => { AIhub.theme.set(el.dataset.t); render(); }, 'new-order': () => License.canAdd() ? orderForm(null) : licenseModal(LIMIT_MSG), 'new-product': () => productForm(null), 'new-customer': () => customerForm(null),
   'edit-order': el => { closeModal(); orderForm(Orders.get(el.dataset.id)); }, 'view-order': el => { if ($('#modal-root').children.length) closeModal(); orderView(el.dataset.id); },
   'del-order': async el => { const o = Orders.get(el.dataset.id); if (await confirmBox(`سفارش #${fa(o.no)} حذف شود؟${Orders.consumes(o.status) ? ' موجودی کالاها به انبار برمی‌گردد.' : ''}${Payments.paid(o.id) !== 0 ? ' پرداخت‌های ثبت‌شده‌ی آن هم حذف می‌شود.' : ''}`, 'حذف', true)) { await run(() => Orders.remove(o.id), 'سفارش حذف شد'); refresh(); } },
   'edit-product': el => { closeModal(); productForm(Products.get(el.dataset.id)); },
@@ -4225,6 +4336,7 @@ function bootFail(e) {
   const newer = e && e.name === 'VersionError', m = newer ? 'اطلاعات ذخیره‌شده با نسخه‌ی جدیدتری از برنامه ساخته شده است. برنامه را با اینترنت باز کنید تا به‌روز شود.' : 'باز کردن اطلاعات ذخیره‌شده ممکن نشد. برنامه چیزی را پاک نکرده است؛ یک بار برنامه را ببندید و دوباره باز کنید.';
   $('#app').innerHTML = `<div class="card" style="max-width:420px;margin:12vh auto 0;text-align:center" role="alert"><h2 style="margin-bottom:10px">مشکل در راه‌اندازی</h2><p class="muted" style="margin-bottom:14px">${m}</p><button class="btn btn--primary" id="boot-retry">تلاش دوباره</button><p class="muted" dir="ltr" style="font-size:.75rem;margin-top:12px">${esc(String((e && (e.name || e.message)) || e).slice(0, 100))}</p></div>`;
   $('#boot-retry').onclick = () => location.reload();
+  if (newer && window.SDUpdate) { try { SDUpdate.check(false).then(function () { SDUpdate.apply(); }); } catch (x) { /* ignore */ } } /* stored data is from a NEWER build: fetch it and reload into it */
 }
 (async function boot() {
   /* last-resort safety net: an unexpected error is never silent (a write may not have been saved); registered FIRST so start-up errors are covered too */

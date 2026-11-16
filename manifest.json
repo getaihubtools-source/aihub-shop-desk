@@ -11,10 +11,114 @@
   "orientation": "any",
   "background_color": "#0A1220",
   "theme_color": "#0A1220",
-  "categories": ["business", "finance", "productivity"],
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "display_override": [
+    "standalone"
+  ],
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "screenshots": [
+    {
+      "src": "screenshots/home-narrow.png",
+      "sizes": "780x1688",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "خانه: خلاصه‌ی فروش، سود و مطالبات"
+    },
+    {
+      "src": "screenshots/orders-narrow.png",
+      "sizes": "780x1688",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "سفارش‌ها: جدول و وضعیت پرداخت"
+    },
+    {
+      "src": "screenshots/finance-narrow.png",
+      "sizes": "780x1688",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "مالی: سود خالص و هزینه‌ها"
+    },
+    {
+      "src": "screenshots/home-wide.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "نمای دسکتاپ: داشبورد"
+    },
+    {
+      "src": "screenshots/orders-wide.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "نمای دسکتاپ: سفارش‌ها"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "سفارش‌ها",
+      "short_name": "سفارش‌ها",
+      "description": "مشاهده و ثبت سفارش",
+      "url": "app/#/orders",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "محصولات",
+      "short_name": "محصولات",
+      "description": "موجودی و قیمت محصولات",
+      "url": "app/#/products",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "مالی",
+      "short_name": "مالی",
+      "description": "سود، هزینه و مطالبات",
+      "url": "app/#/finance",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }
