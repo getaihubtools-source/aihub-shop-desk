@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20261114.2c0f20">
+<meta name="app-build" content="20261120.789e34">
 <meta name="apple-mobile-web-app-title" content="Shop Desk">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>AIhub Shop Desk — دفتر سفارش و سود فروشگاه آنلاین</title>
@@ -1221,6 +1221,89 @@ a[role=button]:hover{color:var(--primary-ink)}
 .update-bar{position:fixed;inset-inline:var(--sp-3);inset-block-end:calc(var(--bottomnav-h) + var(--sp-3) + env(safe-area-inset-bottom,0px));z-index:var(--z-appbar);display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);padding:var(--sp-3) var(--sp-4);background:var(--surface);color:var(--text);border:1px solid var(--primary);border-radius:var(--r-lg);box-shadow:var(--shadow-3);max-inline-size:560px;margin-inline:auto}
 .update-bar__text{flex:1 1 220px;font-size:var(--fs-sm);font-weight:var(--fw-semibold)}
 @media (min-width:1024px){.update-bar{inset-inline:auto;inset-inline-start:var(--sp-5);inset-block-end:var(--sp-5)}}
+
+/* ===== mobile: compact list rows (orders / products / customers) =====
+   Pattern: 2–3 line rows, the key fact big (amount / stock / name), the rest small + label-free (the unit is part of the value),
+   the whole row opens the record (see row-tap script), only the quick actions stay as icons. Desktop keeps the real table. */
+@media (max-width:639.98px){
+  .dt--cards table{min-width:0!important;width:100%}
+  .dt--orders tbody tr,.dt--products tbody tr,.dt--customers tbody tr{display:grid;gap:var(--sp-1) var(--sp-3);padding:var(--sp-3) var(--sp-4);align-items:center;cursor:pointer}
+  .dt--orders tbody tr:active,.dt--products tbody tr:active,.dt--customers tbody tr:active{background:var(--surface-2)}
+  .dt--orders td,.dt--products td,.dt--customers td{display:block;min-height:0;padding:0;text-align:start;min-width:0;font-size:var(--fs-sm);color:var(--text-muted);white-space:nowrap}
+  .dt--orders td::before,.dt--products td::before,.dt--customers td::before{display:none!important}
+  .dt__title{font-weight:var(--fw-semibold);font-size:var(--fs-base);color:var(--text)!important}
+  .dt--orders .dt__actions,.dt--products .dt__actions,.dt--customers .dt__actions{justify-content:flex-end;gap:0}
+  .dt--orders [data-a="view-order"],.dt--customers [data-a="view-customer"],.dt--products [data-a="edit-product"]{display:none}
+  .dt__tools .search{flex:1 1 100%}
+  .dt__tools .select{flex:1 1 calc(50% - var(--sp-3));min-width:0;width:auto}
+  .page-head__actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);inline-size:100%}
+  .page-head__actions .btn{flex:1 1 auto}
+  /* ---- orders: #no customer … amount / items … payment / status · date … actions ---- */
+  .dt--orders tbody tr{grid-template-columns:auto auto minmax(0,1fr) auto;grid-template-areas:"no cust cust amt" "items items items pay" "st st date act"}
+  .dt--orders td:nth-child(1){grid-area:no;font-size:var(--fs-xs)}
+  .dt--orders td:nth-child(1)::before{display:inline!important;content:"#"}
+  .dt--orders td:nth-child(2){grid-area:date;text-align:end;font-size:var(--fs-xs)}
+  .dt--orders td:nth-child(3){grid-area:cust;overflow:hidden;text-overflow:ellipsis}
+  .dt--orders td:nth-child(3) .sub{display:none}
+  .dt--orders td:nth-child(4){grid-area:items;overflow:hidden}
+  .dt--orders td:nth-child(4)>span{display:block;overflow:hidden;text-overflow:ellipsis}
+  .dt--orders td:nth-child(5){grid-area:amt;text-align:end;font-size:var(--fs-md);font-weight:var(--fw-bold);color:var(--text)}
+  .dt--orders td:nth-child(5)::after{content:" تومان";font-size:var(--fs-xs);color:var(--text-muted);font-weight:var(--fw-regular)}
+  .dt--orders td:nth-child(6){grid-area:pay;text-align:end}
+  .dt--orders td:nth-child(7){grid-area:st}
+  .dt--orders .select--status{min-height:36px;padding-block:0;width:auto;min-width:0;font-size:var(--fs-sm)}
+  .dt--orders td:nth-child(8){grid-area:act}
+  /* ---- products: name … stock / category · buy · sell · margin / actions ---- */
+  .dt--products tbody tr{grid-template-columns:repeat(4,auto);justify-content:space-between;grid-template-areas:"title title title stock" "cat buy sell margin" "act act act act"}
+  .dt--products td:nth-child(1){grid-area:title;overflow:hidden;text-overflow:ellipsis}
+  .dt--products td:nth-child(2){grid-area:cat}
+  .dt--products td:nth-child(3){grid-area:buy}
+  .dt--products td:nth-child(3)::before{display:inline!important;content:"خرید "}
+  .dt--products td:nth-child(4){grid-area:sell;color:var(--text);font-weight:var(--fw-semibold)}
+  .dt--products td:nth-child(4)::before{display:inline!important;content:"فروش ";font-weight:var(--fw-regular);color:var(--text-muted)}
+  .dt--products td:nth-child(5){grid-area:margin}
+  .dt--products td:nth-child(5)::after{content:" سود";font-size:var(--fs-xs)}
+  .dt--products td:nth-child(6){grid-area:stock;text-align:end;font-weight:var(--fw-bold);font-size:var(--fs-base);color:var(--text)}
+  .dt--products td:nth-child(7){grid-area:act}
+  .dt--products td:nth-child(1) .sub,.dt--products td:nth-child(1) .dt__sub{display:none}
+  .dt--products .dt__variants{display:none}
+  .dt--products .dt__actions .btn{min-height:36px;padding-block:0}
+  /* ---- customers: name … actions / phone · page · city / orders · total · debt · last ---- */
+  .dt--customers tbody tr{grid-template-columns:repeat(4,auto);justify-content:space-between;grid-template-areas:"name name name act" "phone page page city" "ord total total due"}
+  .dt--customers td:nth-child(1){grid-area:name;overflow:hidden;text-overflow:ellipsis}
+  .dt--customers td:nth-child(2){grid-area:phone}
+  .dt--customers td:nth-child(3){grid-area:page;overflow:hidden;text-overflow:ellipsis;text-align:center}
+  .dt--customers td:nth-child(4){grid-area:city;text-align:end}
+  .dt--customers td:nth-child(5){grid-area:ord}
+  .dt--customers td:nth-child(5)::after{content:" سفارش";font-size:var(--fs-xs)}
+  .dt--customers td:nth-child(6){grid-area:total;color:var(--text);font-weight:var(--fw-semibold)}
+  .dt--customers td:nth-child(6)::after{content:" ت";font-size:var(--fs-xs);color:var(--text-muted)}
+  .dt--customers td:nth-child(7){grid-area:due}
+  .dt--customers td:nth-child(7)::before{display:inline!important;content:"بدهی ";font-size:var(--fs-xs)}
+  .dt--customers td:nth-child(8){display:none}
+  .dt--customers td:nth-child(9){grid-area:act}
+}
+
+/* ===== splash (cold start) ===== */
+.splash{position:fixed;inset:0;z-index:calc(var(--z-toast) + 10);display:grid;grid-template-rows:1fr auto;justify-items:center;padding:var(--sp-8) var(--sp-6) calc(var(--sp-10) + env(safe-area-inset-bottom,0px));overflow:hidden;isolation:isolate;color:var(--on-brand,#fff);
+  background:radial-gradient(120% 70% at 85% 0%,var(--brand-700) 0%,transparent 60%),radial-gradient(90% 60% at 10% 100%,var(--brand-900) 0%,transparent 70%),var(--ink-950);transition:opacity .45s ease,transform .45s ease}
+.splash.is-out{opacity:0;transform:scale(1.03);pointer-events:none}
+.splash__center{align-self:center;display:grid;justify-items:center;gap:var(--sp-4);text-align:center}
+.splash__mark{position:relative;inline-size:104px;block-size:104px;border-radius:30px;box-shadow:0 0 0 1px color-mix(in srgb,#fff 14%,transparent),0 24px 60px -12px var(--primary-glow);animation:sp-pop .7s cubic-bezier(.2,.9,.3,1.2) both}
+.splash__mark::after{content:"";position:absolute;inset:-14px;border-radius:40px;border:1px solid color-mix(in srgb,#fff 12%,transparent);animation:sp-ring 2.2s ease-out .6s infinite}
+.splash .brand__mark{inline-size:100%;block-size:100%;border-radius:30px;box-shadow:none;font-size:0}
+.splash__name{margin:0;font-size:var(--fs-2xl);font-weight:var(--fw-black);letter-spacing:.2px;animation:sp-up .6s ease .25s both}
+.splash__tag{margin:0;color:color-mix(in srgb,#fff 72%,transparent);font-size:var(--fs-base);animation:sp-up .6s ease .4s both}
+.splash__foot{display:grid;justify-items:center;gap:var(--sp-3);inline-size:min(220px,60vw);animation:sp-up .6s ease .55s both}
+.splash__bar{position:relative;inline-size:100%;block-size:4px;border-radius:var(--r-pill);background:color-mix(in srgb,#fff 16%,transparent);overflow:hidden}
+.splash__bar i{position:absolute;inset-block:0;inline-size:38%;border-radius:inherit;background:var(--accent-500);animation:sp-bar 1.25s cubic-bezier(.5,0,.3,1) infinite}
+.splash__foot small{font-size:var(--fs-xs);color:color-mix(in srgb,#fff 55%,transparent);letter-spacing:.6px}
+@keyframes sp-pop{from{opacity:0;transform:scale(.78)}to{opacity:1;transform:none}}
+@keyframes sp-up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes sp-ring{0%{opacity:.7;transform:scale(.92)}100%{opacity:0;transform:scale(1.25)}}
+@keyframes sp-bar{0%{inset-inline-start:-40%}100%{inset-inline-start:102%}}
+html.splash-on body{overflow:hidden}
+@media (prefers-reduced-motion:reduce){.splash,.splash *{animation:none!important;transition:none!important}.splash__bar i{inset-inline-start:31%}}
 </style>
 </head>
 <body class="has-bottomnav">
@@ -1272,7 +1355,41 @@ a[role=button]:hover{color:var(--primary-ink)}
   </defs>
 </svg>
 
+<div id="splash" class="splash pattern-girih" role="status" aria-live="polite" aria-label="در حال بارگذاری Shop Desk">
+  <div class="splash__center"><div class="splash__mark"><div class="brand__mark" aria-hidden="true">SD</div></div><h1 class="splash__name">Shop Desk</h1><p class="splash__tag">دفتر سفارش و سود فروشگاه شما</p></div>
+  <div class="splash__foot"><div class="splash__bar" aria-hidden="true"><i></i></div><small dir="ltr">AIhub Tools</small></div>
+</div>
 <div id="app"><div class="boot" role="status" aria-busy="true" aria-label="در حال بارگذاری"><div class="skeleton boot__bar"></div><div class="skeleton boot__card"></div><div class="skeleton boot__card"></div></div></div><div id="modal-root"></div>
+<script>
+/* mobile list rows: tapping the row (not a button/select/link) opens the record — same action as the hidden eye/edit icon */
+document.addEventListener('click', function (e) {
+  if (window.innerWidth >= 640) return;
+  var tr = e.target.closest && e.target.closest('.dt--cards tbody tr');
+  if (!tr || e.target.closest('button,a,select,input,label,[data-a],[data-chg]')) return;
+  var b = tr.querySelector('[data-a="view-order"],[data-a="view-customer"],[data-a="edit-product"]'); if (b) b.click();
+});
+</script>
+<script>
+/* splash: shown on a cold start only; removed once the app has replaced its boot skeleton (min 0.9 s, hard stop 6 s). Skipped after an in-app update reload. */
+(function () {
+  var s = document.getElementById('splash'); if (!s) return;
+  var seen = false; try { seen = sessionStorage.getItem('sd_splash') === '1'; } catch (e) { seen = false; }
+  if (seen) { s.parentNode.removeChild(s); return; }
+  document.documentElement.className += ' splash-on';
+  var t0 = Date.now(), done = false, app = document.getElementById('app');
+  function hide() {
+    if (done) return; done = true;
+    setTimeout(function () {
+      s.className += ' is-out'; try { sessionStorage.setItem('sd_splash', '1'); } catch (e) { /* ignore */ }
+      setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); document.documentElement.className = document.documentElement.className.replace(' splash-on', ''); }, 480);
+    }, Math.max(0, 900 - (Date.now() - t0)));
+  }
+  function ready() { return app && !app.querySelector('.boot'); }
+  if (window.MutationObserver && app) { var mo = new MutationObserver(function () { if (ready()) { mo.disconnect(); hide(); } }); mo.observe(app, { childList: true, subtree: true }); }
+  setTimeout(hide, 6000);
+})();
+</script>
+
 <script data-root="../" data-mode="app">
 /* ===== SDUpdate — update client (registration, detection, notice, safe apply) ===== */
 (function () {
@@ -3442,7 +3559,7 @@ function ordersList() {
 }
 function viewOrders() {
   const f = UI.f.orders;
-  $('#view').innerHTML = `<div class="dt dt--cards"><div class="dt__tools">${searchBox('q-orders', 'جستجو: نام، شماره، پیج، کد رهگیری، کالا…', f.q)}
+  $('#view').innerHTML = `<div class="dt dt--cards dt--orders"><div class="dt__tools">${searchBox('q-orders', 'جستجو: نام، شماره، پیج، کد رهگیری، کالا…', f.q)}
     <select class="select" data-chg="f-status" aria-label="فیلتر وضعیت"><option value="">همه‌ی وضعیت‌ها</option><option value="toship" ${f.status === 'toship' ? 'selected' : ''}>منتظر ارسال (پرداخت‌شده / آماده)</option>${STATUSES.map(s => `<option value="${s[0]}" ${f.status === s[0] ? 'selected' : ''}>${s[1]}</option>`).join('')}</select>
     <select class="select" data-chg="f-source" aria-label="فیلتر منبع"><option value="">همه‌ی منبع‌ها</option>${Object.entries(SOURCES).map(([k, v]) => `<option value="${k}" ${f.source === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
     <select class="select" data-chg="f-pay" aria-label="فیلتر پرداخت"><option value="">همه‌ی پرداخت‌ها</option>${optList([['unpaid', 'پرداخت‌نشده'], ['partial', 'پرداخت ناقص'], ['paid', 'تسویه‌شده']], f.pay)}</select></div><div id="list-area">${ordersList()}</div></div>`;
@@ -3470,7 +3587,7 @@ function productsList() {
 }
 function viewProducts() {
   const f = UI.f.products;
-  $('#view').innerHTML = `<div class="dt dt--cards"><div class="dt__tools">${searchBox('q-products', 'جستجوی محصول، دسته یا تنوع…', f.q)}<select class="select" data-chg="f-pstock" aria-label="فیلتر موجودی">
+  $('#view').innerHTML = `<div class="dt dt--cards dt--products"><div class="dt__tools">${searchBox('q-products', 'جستجوی محصول، دسته یا تنوع…', f.q)}<select class="select" data-chg="f-pstock" aria-label="فیلتر موجودی">
     ${optList([['', 'محصولات فعال'], ['attn', 'نیازمند تأمین (کم‌موجود + ناموجود)'], ['low', 'کم‌موجود'], ['out', 'ناموجود'], ['archived', 'بایگانی‌شده']], f.stock)}</select></div><div id="list-area">${productsList()}</div></div>`;
   $('#top-actions').innerHTML = `<button type="button" class="btn btn--primary" data-a="new-product">${ic('plus')} محصول جدید</button>`;
 }
@@ -3488,7 +3605,7 @@ function customersList() {
 }
 function viewCustomers() {
   const f = UI.f.customers;
-  $('#view').innerHTML = `<div class="dt dt--cards"><div class="dt__tools">${searchBox('q-customers', 'جستجوی نام، تلفن، پیج یا شهر…', f.q)}<select class="select" data-chg="f-csort" aria-label="مرتب‌سازی">
+  $('#view').innerHTML = `<div class="dt dt--cards dt--customers"><div class="dt__tools">${searchBox('q-customers', 'جستجوی نام، تلفن، پیج یا شهر…', f.q)}<select class="select" data-chg="f-csort" aria-label="مرتب‌سازی">
     ${optList([['last', 'جدیدترین خرید'], ['old', 'مدتی خرید نکرده‌اند (۲ خرید یا بیشتر، ۶۰+ روز)'], ['total', 'بیشترین خرید'], ['due', 'بیشترین بدهی'], ['name', 'الفبایی']], f.sort)}</select></div><div id="list-area">${customersList()}</div></div>`;
   $('#top-actions').innerHTML = `<button type="button" class="btn btn--primary" data-a="new-customer">${ic('plus')} مشتری جدید</button>`;
 }
