@@ -1,4 +1,4 @@
-/* AIhub Shop Desk — service worker (update-aware)
+/* Shop Desk — service worker (update-aware)
    Update model
    - BUILD is stamped by tools/stamp.py (content hash). Any content change => this file's bytes change => the browser
      installs a new worker. Without stamping, pages still update (network-first), only the in-app notice is less precise.
@@ -9,7 +9,7 @@
      means "silently one visit behind".
    - Only the static shell is cached. User data (IndexedDB/localStorage), backups and licenses are never touched.
    All URLs are resolved against the worker's scope, so it works under any sub-path (GitHub Pages /repo/). */
-const BUILD = '20261120.789e34';
+const BUILD = '20261122.7f18d1';
 const PREFIX = 'aihub-shop-desk-shell-';
 const CACHE = PREFIX + BUILD;
 const PAGES = ['', 'app/'];  /* landing page + app page */
